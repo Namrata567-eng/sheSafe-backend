@@ -1,4 +1,4 @@
-// COMPLETE UPDATED SERVER.JS WITH REPORT ROUTES:
+// COMPLETE UPDATED SERVER.JS WITH FIXED REGISTRATION:
 import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
@@ -13,10 +13,10 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import commentRoutes from "./routes/commentRoutes.js";
 import friendRoutes from "./routes/friendRoutes.js";
-import reportRoutes from "./routes/reportRoutes.js";  // ✅ ADD THIS
+import reportRoutes from "./routes/reportRoutes.js";
 import User from "./models/User.js";  
 import liveLocationRoutes from './routes/LiveLocation.js';
-import notificationRoutes from "./routes/notification.routes.js";  // ✅ ADD THIS
+import notificationRoutes from "./routes/notification.routes.js";
 
 dotenv.config();
 
@@ -31,13 +31,17 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use('/api/live-location', liveLocationRoutes);
 
 // ===== MongoDB Connection =====
+mongoose.set("strictQuery", false);
+
+console.log("Loaded MONGO_URI =", process.env.MONGO_URI);
+
 mongoose
-  .connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => console.log("✅ MongoDB connected"))
-  .catch((err) => console.error("❌ MongoDB connection error:", err));
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("✅ MongoDB connected successfully"))
+  .catch((err) => {
+    console.error("❌ MongoDB connection ERROR");
+    console.error(err);
+  });
 
 // ===== Feedback Schema & Model =====
 const feedbackSchema = new mongoose.Schema(
@@ -67,7 +71,6 @@ export const protect = async (req, res, next) => {
       if (!req.user)
         return res.status(401).json({ success: false, message: "User not found" });
 
-
       next();
     } catch (error) {
       console.error("❌ Token verification failed:", error.message);
@@ -82,62 +85,40 @@ export const protect = async (req, res, next) => {
   }
 };
 
-
 // ===== Root Route =====
 app.get("/", (req, res) => {
   res.send("🚀 Women Security API is running...");
 });
 
-
-
-
 // ===== Friend Routes (Protected) =====
 app.use("/api/friends", protect, friendRoutes);
 app.use('/api/notifications', notificationRoutes);
 
-
-
-
-// ===== Registration =====
+// ===== ✅ FIXED Registration - No Double Hashing =====
 app.post("/api/register", async (req, res) => {
   try {
     let { fullName, email, password, emergencyContact, age, bio } = req.body;
+    
     if (!fullName || !email || !password || !emergencyContact)
       return res.status(400).json({ message: "All fields are required" });
 
-
-
-
     email = email.trim().toLowerCase();
     const existingUser = await User.findOne({ email });
+    
     if (existingUser)
       return res.status(400).json({ message: "Email already registered" });
 
-
-
-
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-
-
-
+    // ✅ CRITICAL FIX: Don't hash manually - let pre-save hook do it
     const newUser = new User({
       fullName,
       email,
-      password: hashedPassword,
+      password,  // ✅ Plain password - pre-save hook will hash it automatically
       emergencyContact,
       age,
       bio,
     });
 
-
-
-
-    await newUser.save();
-
-
-
+    await newUser.save();  // Pre-save hook will hash password here
 
     const token = jwt.sign(
       { id: newUser._id },
@@ -145,8 +126,7 @@ app.post("/api/register", async (req, res) => {
       { expiresIn: "1d" }
     );
 
-
-
+    console.log(`✅ New user registered: ${newUser.email}`);
 
     res.status(201).json({
       message: "✅ User registered successfully",
@@ -166,11 +146,6 @@ app.post("/api/register", async (req, res) => {
   }
 });
 
-
-
-
-
-
 // ===== Login =====
 app.post("/api/login", async (req, res) => {
   try {
@@ -178,30 +153,18 @@ app.post("/api/login", async (req, res) => {
     if (!email || !password)
       return res.status(400).json({ message: "Email and password are required" });
 
-
-
-
     email = email.trim().toLowerCase();
     const user = await User.findOne({ email });
     if (!user) return res.status(401).json({ message: "User not found" });
 
-
-
-
     const isMatch = await user.matchPassword(password);
     if (!isMatch) return res.status(401).json({ message: "Invalid password" });
-
-
-
 
     const token = jwt.sign(
       { id: user._id },
       process.env.JWT_SECRET || "secret",
       { expiresIn: "1d" }
     );
-
-
-
 
     res.status(200).json({
       message: "✅ Login successful",
@@ -222,7 +185,6 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-
 // ===== Get All Users =====
 app.get("/api/users", async (req, res) => {
   try {
@@ -238,7 +200,6 @@ app.get("/api/users", async (req, res) => {
       password: "••••••",
     }));
 
-
     res.status(200).json(safeUsers);
   } catch (error) {
     console.error("❌ Error in /api/users:", error.message);
@@ -246,15 +207,11 @@ app.get("/api/users", async (req, res) => {
   }
 });
 
-
-
-
 // ===== Get Single User (Protected) =====
 app.get("/api/auth/user/:id", protect, async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select("-password");
     if (!user) return res.status(404).json({ message: "User not found" });
-
 
     res.json({
       data: {
@@ -273,9 +230,6 @@ app.get("/api/auth/user/:id", protect, async (req, res) => {
   }
 });
 
-
-
-
 // ===== Update Profile (Protected) =====
 app.put("/api/auth/update/:id", protect, async (req, res) => {
   try {
@@ -285,9 +239,7 @@ app.put("/api/auth/update/:id", protect, async (req, res) => {
     const user = await User.findById(id);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-
     console.log(`🔧 Profile Update for: ${user.email}`);
-
 
     if (fullName !== undefined) user.fullName = fullName;
     if (email !== undefined) user.email = email;
@@ -296,11 +248,9 @@ app.put("/api/auth/update/:id", protect, async (req, res) => {
     if (bio !== undefined) user.bio = bio;
     if (profilePic !== undefined) user.profilePic = profilePic;
 
-
     const updatedUser = await user.save();
    
     console.log(`✅ Profile updated successfully`);
-
 
     res.json({
       message: "Profile updated successfully",
@@ -320,10 +270,7 @@ app.put("/api/auth/update/:id", protect, async (req, res) => {
   }
 });
 
-
-
-
-// ===== ✅ FIXED: Update User (Admin) - No More Double Hashing =====
+// ===== Update User (Admin) - No More Double Hashing =====
 app.put("/api/users/:id", async (req, res) => {
   try {
     let { fullName, email, emergencyContact, password } = req.body;
@@ -339,44 +286,33 @@ app.put("/api/users/:id", async (req, res) => {
       password: password ? `"${password}" (length: ${password.length})` : 'No change'
     });
 
-
-    // ✅ Find user first
     const user = await User.findById(req.params.id);
     if (!user) {
       console.log(`❌ User not found`);
       return res.status(404).json({ message: "User not found" });
     }
 
-
     console.log(`✅ User found: ${user.email}`);
 
-
-    // ✅ Update fields individually
     if (fullName !== undefined) user.fullName = fullName;
     if (email !== undefined) user.email = email;
     if (emergencyContact !== undefined) user.emergencyContact = emergencyContact;
    
-    // ✅ CRITICAL FIX: Set plain password - pre-save hook will hash it ONCE
     if (password && password.trim() !== "") {
       console.log(`🔐 Setting new password (plain text)`);
       console.log(`   Password: "${password}"`);
-      user.password = password; // Pre-save hook will hash this
+      user.password = password;
     } else {
       console.log(`⏭️  No password change requested`);
     }
 
-
-    // ✅ Save - pre-save hook will handle hashing
     const updatedUser = await user.save();
-
 
     console.log(`✅ User updated successfully`);
     console.log(`   Email: ${updatedUser.email}`);
     console.log(`   Password hash: ${updatedUser.password.substring(0, 29)}...`);
     console.log(`${"=".repeat(50)}\n`);
 
-
-    // Return safe user data (no password)
     const safeUser = {
       _id: updatedUser._id,
       fullName: updatedUser.fullName,
@@ -387,12 +323,10 @@ app.put("/api/users/:id", async (req, res) => {
       profilePic: updatedUser.profilePic,
     };
 
-
     res.status(200).json({
       message: "✅ User updated successfully",
       user: safeUser
     });
-
 
   } catch (error) {
     console.error("❌ Error in /api/users/:id (update):", error.message);
@@ -403,9 +337,6 @@ app.put("/api/users/:id", async (req, res) => {
     });
   }
 });
-
-
-
 
 // ===== Delete User (Admin) =====
 app.delete("/api/users/:id", async (req, res) => {
@@ -433,9 +364,8 @@ app.delete("/api/users/:id", async (req, res) => {
     res.status(500).json({ message: "Delete failed", error: error.message });
   }
 });
-// ===== ✅ FORGOT PASSWORD - Sends email with MANUAL TOKEN =====
 
-
+// ===== FORGOT PASSWORD =====
 app.post("/api/forgot-password", async (req, res) => {
   try {
     let { email } = req.body;
@@ -443,9 +373,6 @@ app.post("/api/forgot-password", async (req, res) => {
     if (!email) {
       return res.status(400).json({ message: "Email is required" });
     }
-
-
-
 
     email = email.trim().toLowerCase();
     const user = await User.findOne({ email });
@@ -456,24 +383,13 @@ app.post("/api/forgot-password", async (req, res) => {
       });
     }
 
-
-
-
-    // Generate reset token
     const resetToken = crypto.randomBytes(32).toString("hex");
     user.resetToken = resetToken;
-    user.resetTokenExpiry = Date.now() + 3600000; // 1 hour
+    user.resetTokenExpiry = Date.now() + 3600000;
     await user.save();
-
-
-
 
     console.log(`✅ Token generated for ${user.email}: ${resetToken.substring(0, 10)}...`);
 
-
-
-
-    // Email setup
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -483,18 +399,11 @@ app.post("/api/forgot-password", async (req, res) => {
       tls: { rejectUnauthorized: false },
     });
 
-
-
-
     const SERVER_IP = process.env.SERVER_IP || "192.168.43.216";
     const PORT = process.env.PORT || 5000;
    
     const resetUrl = `http://${SERVER_IP}:${PORT}/reset-password-page?token=${resetToken}`;
 
-
-
-
-    // ✅ UPDATED EMAIL WITH MANUAL TOKEN
     await transporter.sendMail({
       from: `"sheSafe App" <${process.env.EMAIL_USER}>`,
       to: user.email,
@@ -506,7 +415,6 @@ app.post("/api/forgot-password", async (req, res) => {
             <p style="font-size: 16px;">Hello <strong>${user.fullName}</strong>,</p>
             <p style="font-size: 14px; color: #555;">You requested to reset your password.</p>
            
-            <!-- ✅ MANUAL TOKEN SECTION (Primary Method) -->
             <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 25px 0; border: 2px dashed #dee2e6;">
               <p style="margin: 0 0 12px 0; color: #495057; font-weight: bold; font-size: 14px; text-align: center;">
                 📱 Your Password Reset Token
@@ -525,7 +433,6 @@ app.post("/api/forgot-password", async (req, res) => {
               </div>
             </div>
            
-            <!-- Link Button (For future APK builds) -->
             <div style="text-align: center; margin: 30px 0;">
               <a href="${resetUrl}" style="display: inline-block; padding: 15px 40px; background-color: #e91e8c; color: white; text-decoration: none; border-radius: 8px; font-weight: bold;">
                 Or Click Here to Reset
@@ -553,19 +460,11 @@ app.post("/api/forgot-password", async (req, res) => {
       `,
     });
 
-
-
-
     console.log(`✅ Reset email sent to: ${user.email}`);
-    console.log(`📧 Reset URL: ${resetUrl}`);
-    console.log(`🔑 Token visible in email: ${resetToken.substring(0, 15)}...`);
    
     res.json({
       message: `Password reset link sent to ${user.email}`
     });
-
-
-
 
   } catch (error) {
     console.error("❌ Forgot password error:", error);
@@ -576,10 +475,7 @@ app.post("/api/forgot-password", async (req, res) => {
   }
 });
 
-
-
-
-// ===== ✅ Reset Password Page - Opens App via Deep Link =====
+// ===== Reset Password Page =====
 app.get("/reset-password-page", (req, res) => {
   const { token } = req.query;
  
@@ -620,9 +516,6 @@ app.get("/reset-password-page", (req, res) => {
       </html>
     `);
   }
-
-
-
 
   const deepLinks = {
     primary: `womensafetyapp://reset-password?token=${token}`,
@@ -712,9 +605,6 @@ app.get("/reset-password-page", (req, res) => {
           </p>
         </div>
 
-
-
-
         <script>
           const deepLinks = {
             primary: "${deepLinks.primary}",
@@ -750,13 +640,11 @@ app.get("/reset-password-page", (req, res) => {
   `);
 });
 
-
-// ===== ✅ FIXED RESET PASSWORD API =====
+// ===== RESET PASSWORD API =====
 app.post("/api/reset-password/:token", async (req, res) => {
   try {
     const { token } = req.params;
     const { password } = req.body;
-
 
     console.log(`\n${"=".repeat(50)}`);
     console.log(`🔑 PASSWORD RESET ATTEMPT`);
@@ -764,14 +652,12 @@ app.post("/api/reset-password/:token", async (req, res) => {
     console.log(`Token: ${token.substring(0, 15)}...`);
     console.log(`New Password: "${password}" (length: ${password?.length})`);
 
-
     if (!password || password.length < 6) {
       console.log(`❌ Password validation failed`);
       return res.status(400).json({
         message: "Password must be at least 6 characters"
       });
     }
-
 
     const user = await User.findOne({
       resetToken: token,
@@ -785,28 +671,22 @@ app.post("/api/reset-password/:token", async (req, res) => {
       });
     }
 
-
     console.log(`✅ User found: ${user.email}`);
     console.log(`📝 Old password hash: ${user.password.substring(0, 29)}...`);
 
-
-    // ✅ CRITICAL FIX: Set PLAIN password - pre-save hook will hash it ONCE
     user.password = password;
     user.resetToken = undefined;
     user.resetTokenExpiry = undefined;
    
-    await user.save(); // Pre-save hook will hash the password
-
+    await user.save();
 
     console.log(`📝 New password hash: ${user.password.substring(0, 29)}...`);
     console.log(`✅ Password reset successful!`);
     console.log(`${"=".repeat(50)}\n`);
 
-
     res.json({
       message: "Password reset successfully! You can now login."
     });
-
 
   } catch (error) {
     console.error("❌ Reset password error:", error);
@@ -816,6 +696,7 @@ app.post("/api/reset-password/:token", async (req, res) => {
     });
   }
 });
+
 // ===== Feedback Routes =====
 app.post("/api/feedback", protect, async (req, res) => {
   try {
@@ -826,14 +707,8 @@ app.post("/api/feedback", protect, async (req, res) => {
         message: "All fields are required",
       });
 
-
-
-
     const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
-
-
-
 
     const feedback = await Feedback.create({
       userId: user._id,
@@ -845,8 +720,7 @@ app.post("/api/feedback", protect, async (req, res) => {
       email,
     });
 
-
-
+    console.log(`✅ Feedback saved: ${feedback._id}`);
 
     res.status(201).json({
       success: true,
@@ -858,9 +732,6 @@ app.post("/api/feedback", protect, async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to submit feedback" });
   }
 });
-
-
-
 
 app.get("/api/feedback", async (req, res) => {
   try {
@@ -875,9 +746,6 @@ app.get("/api/feedback", async (req, res) => {
   }
 });
 
-
-
-
 app.get("/api/feedback/my", protect, async (req, res) => {
   try {
     const feedbacks = await Feedback.find({ userId: req.user._id })
@@ -890,9 +758,6 @@ app.get("/api/feedback/my", protect, async (req, res) => {
   }
 });
 
-
-
-
 app.put("/api/feedback/:id", protect, async (req, res) => {
   try {
     const { id } = req.params;
@@ -904,9 +769,6 @@ app.put("/api/feedback/:id", protect, async (req, res) => {
         .status(403)
         .json({ success: false, message: "You can only update your own feedback" });
 
-
-
-
     Object.assign(feedback, req.body);
     const updatedFeedback = await feedback.save();
     res.json({ success: true, message: "Feedback updated successfully", updatedFeedback });
@@ -915,9 +777,6 @@ app.put("/api/feedback/:id", protect, async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to update feedback" });
   }
 });
-
-
-
 
 app.delete("/api/feedback/:id", protect, async (req, res) => {
   try {
@@ -929,9 +788,6 @@ app.delete("/api/feedback/:id", protect, async (req, res) => {
         .status(403)
         .json({ success: false, message: "You can only delete your own feedback" });
 
-
-
-
     await Feedback.findByIdAndDelete(req.params.id);
     res.json({ success: true, message: "Feedback deleted successfully" });
   } catch (error) {
@@ -942,15 +798,15 @@ app.delete("/api/feedback/:id", protect, async (req, res) => {
 
 // ===== Comment Routes =====
 app.use("/api/comments", commentRoutes);
-// Routes
 
-// ===== Report Routes ✅ ADD THIS =====
+// ===== Report Routes =====
 app.use("/api", reportRoutes);
 
 // ===== Start Server =====
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`\n${"=".repeat(60)}`);
+  console.log("💚 CURRENT MONGO_URI =", process.env.MONGO_URI);
   console.log(`🚀 sheSafe Backend Server Started Successfully!`);
   console.log(`${"=".repeat(60)}`);
   console.log(`📍 Local Access:     http://localhost:${PORT}`);
