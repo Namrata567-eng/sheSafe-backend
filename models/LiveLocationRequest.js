@@ -19,3 +19,5 @@ const liveLocationRequestSchema = new mongoose.Schema({
 });
 
 export default mongoose.model('LiveLocationRequest', liveLocationRequestSchema);
+
+

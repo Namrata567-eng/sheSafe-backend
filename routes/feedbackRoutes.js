@@ -8,13 +8,7 @@ const {
 } = require("../controllers/feedbackControllers");
 const { protect } = require("../Middleware/authMiddleware");
 
-
-
-
 const router = express.Router();
-
-
-
 
 router.post("/", protect, createFeedback);        // Submit feedback
 router.get("/", getAllFeedbacks);                 // Get all feedbacks

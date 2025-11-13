@@ -189,7 +189,7 @@ const forgotPassword = async (req, res) => {
 
 
     // ✅ Get server IP
-    const SERVER_IP = process.env.SERVER_IP || "192.168.1.101";
+    const SERVER_IP = process.env.SERVER_IP || "192.168.1.104";
     const PORT = process.env.PORT || 5000;
 
 
@@ -457,14 +457,13 @@ const getUserById = async (req, res) => {
 
 
 // ✅ Export all functions
-module.exports = {
-  registerUser,
-  loginUser,
+export { 
+  registerUser, 
+  loginUser, 
   forgotPassword,
   resetPassword,
   updateUser,
-  getUserById,
+  getUserById
 };
-
 
 
