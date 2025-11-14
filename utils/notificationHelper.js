@@ -59,3 +59,4 @@ export const NotificationTypes = {
   HELPLINE: { type: 'helpline', icon: '📞' },
   GENERAL: { type: 'general', icon: '🔔' },
 };
+
