@@ -176,47 +176,57 @@ export const sendFriendRequest = async (req, res) => {
     }
 
     // 📧 Send email notification
-    try {
-      const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
-        },
-        tls: { rejectUnauthorized: false },
-      });
+    // 📧 Send email notification
+try {
+  console.log("📧 Attempting to send email...");
+  console.log("EMAIL_USER:", process.env.EMAIL_USER ? "✅ Set" : "❌ Not Set");
+  console.log("EMAIL_PASS:", process.env.EMAIL_PASS ? "✅ Set" : "❌ Not Set");
+  
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+    tls: { rejectUnauthorized: false },
+  });
 
-      await transporter.sendMail({
-        from: `"SheSafe App" <${process.env.EMAIL_USER}>`,
-        to: receiverEmail,
-        subject: '🔔 New Friend Request on SheSafe',
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9;">
-            <div style="background-color: #e91e63; padding: 20px; border-radius: 10px 10px 0 0;">
-              <h2 style="color: white; margin: 0;">New Friend Request 👋</h2>
-            </div>
-            <div style="background-color: white; padding: 30px; border-radius: 0 0 10px 10px;">
-              <p style="font-size: 16px; color: #333;">
-                <strong style="color: #e91e63;">${senderName}</strong> wants to add you as a friend on SheSafe.
-              </p>
-              <div style="background-color: #f8f8f8; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                <p style="margin: 5px 0;"><strong>📧 Email:</strong> ${senderEmail}</p>
-                <p style="margin: 5px 0;"><strong>📱 Phone:</strong> ${receiverPhone || 'Not provided'}</p>
-              </div>
-              <p style="font-size: 14px; color: #666;">
-                Please open the <strong>SheSafe app</strong> to accept or reject this request.
-              </p>
-              <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-              <p style="color: #e91e63; font-weight: bold; text-align: center;">Stay Safe! 💕</p>
-            </div>
+  // Test connection
+  await transporter.verify();
+  console.log("✅ SMTP connection verified");
+
+  await transporter.sendMail({
+    from: `"SheSafe App" <${process.env.EMAIL_USER}>`,
+    to: receiverEmail,
+    subject: '🔔 New Friend Request on SheSafe',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9;">
+        <div style="background-color: #e91e63; padding: 20px; border-radius: 10px 10px 0 0;">
+          <h2 style="color: white; margin: 0;">New Friend Request 👋</h2>
+        </div>
+        <div style="background-color: white; padding: 30px; border-radius: 0 0 10px 10px;">
+          <p style="font-size: 16px; color: #333;">
+            <strong style="color: #e91e63;">${senderName}</strong> wants to add you as a friend on SheSafe.
+          </p>
+          <div style="background-color: #f8f8f8; padding: 15px; border-radius: 8px; margin: 20px 0;">
+            <p style="margin: 5px 0;"><strong>📧 Email:</strong> ${senderEmail}</p>
+            <p style="margin: 5px 0;"><strong>📱 Phone:</strong> ${receiverPhone || 'Not provided'}</p>
           </div>
-        `,
-      });
+          <p style="font-size: 14px; color: #666;">
+            Please open the <strong>SheSafe app</strong> to accept or reject this request.
+          </p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+          <p style="color: #e91e63; font-weight: bold; text-align: center;">Stay Safe! 💕</p>
+        </div>
+      </div>
+    `,
+  });
 
-      console.log("📧 Email notification sent to:", receiverEmail);
-    } catch (emailError) {
-      console.error("❌ Email notification failed:", emailError.message);
-    }
+  console.log("✅ Email notification sent to:", receiverEmail);
+} catch (emailError) {
+  console.error("❌ Email notification failed:", emailError.message);
+  console.error("Full error:", emailError);
+}
 
     res.status(201).json({ 
       success: true, 
